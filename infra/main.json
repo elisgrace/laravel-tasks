@@ -1,0 +1,825 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.36.1.42791",
+      "templateHash": "6690125364691834494"
+    }
+  },
+  "parameters": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "metadata": {
+        "description": "Name which is used to generate a short unique hash for each resource"
+      }
+    },
+    "location": {
+      "type": "string",
+      "minLength": 1,
+      "metadata": {
+        "description": "Primary location for all resources"
+      }
+    },
+    "databasePassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "MySQL server administrator password. It must be at least 8 characters long and contain uppercase letters, lowercase letters, numbers, and special characters."
+      }
+    },
+    "appKey": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Laravel APP_KEY for securing signed data. Run \"php artisan key:generate --show\" and use the output here."
+      }
+    },
+    "principalId": {
+      "type": "string",
+      "defaultValue": ""
+    }
+  },
+  "variables": {
+    "resourceToken": "[toLower(uniqueString(subscription().id, parameters('name'), parameters('location')))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/resourceGroups",
+      "apiVersion": "2021-04-01",
+      "name": "[format('{0}_group', parameters('name'))]",
+      "location": "[parameters('location')]",
+      "tags": {
+        "azd-env-name": "[parameters('name')]"
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "resources",
+      "resourceGroup": "[format('{0}_group', parameters('name'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[parameters('name')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "resourceToken": {
+            "value": "[variables('resourceToken')]"
+          },
+          "databasePassword": {
+            "value": "[parameters('databasePassword')]"
+          },
+          "principalId": {
+            "value": "[parameters('principalId')]"
+          },
+          "appKey": {
+            "value": "[parameters('appKey')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "languageVersion": "2.0",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.36.1.42791",
+              "templateHash": "16497940409388834338"
+            }
+          },
+          "functions": [
+            {
+              "namespace": "__bicep",
+              "members": {
+                "checkAndFormatSecrets": {
+                  "parameters": [
+                    {
+                      "type": "object",
+                      "name": "config"
+                    }
+                  ],
+                  "output": {
+                    "type": "string",
+                    "value": "[if(equals(parameters('config').configType, 'KeyVaultSecret'), format('@Microsoft.KeyVault(SecretUri={0})', parameters('config').value), parameters('config').value)]"
+                  }
+                }
+              }
+            }
+          ],
+          "parameters": {
+            "name": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string"
+            },
+            "resourceToken": {
+              "type": "string"
+            },
+            "principalId": {
+              "type": "string"
+            },
+            "databasePassword": {
+              "type": "securestring"
+            },
+            "appKey": {
+              "type": "securestring"
+            }
+          },
+          "variables": {
+            "appName": "[format('{0}-{1}', parameters('name'), parameters('resourceToken'))]"
+          },
+          "resources": {
+            "virtualNetwork::subnetForDb": {
+              "existing": true,
+              "type": "Microsoft.Network/virtualNetworks/subnets",
+              "apiVersion": "2024-01-01",
+              "name": "[format('{0}/{1}', format('{0}Vnet', variables('appName')), 'database-subnet')]",
+              "dependsOn": [
+                "virtualNetwork"
+              ]
+            },
+            "virtualNetwork::subnetForVault": {
+              "existing": true,
+              "type": "Microsoft.Network/virtualNetworks/subnets",
+              "apiVersion": "2024-01-01",
+              "name": "[format('{0}/{1}', format('{0}Vnet', variables('appName')), 'vault-subnet')]",
+              "dependsOn": [
+                "virtualNetwork"
+              ]
+            },
+            "virtualNetwork::subnetForApp": {
+              "existing": true,
+              "type": "Microsoft.Network/virtualNetworks/subnets",
+              "apiVersion": "2024-01-01",
+              "name": "[format('{0}/{1}', format('{0}Vnet', variables('appName')), 'webapp-subnet')]",
+              "dependsOn": [
+                "virtualNetwork"
+              ]
+            },
+            "virtualNetwork::subnetForCache": {
+              "existing": true,
+              "type": "Microsoft.Network/virtualNetworks/subnets",
+              "apiVersion": "2024-01-01",
+              "name": "[format('{0}/{1}', format('{0}Vnet', variables('appName')), 'cache-subnet')]",
+              "dependsOn": [
+                "virtualNetwork"
+              ]
+            },
+            "privateDnsZoneKeyVault::vnetLink": {
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2020-06-01",
+              "name": "[format('{0}/{1}', 'privatelink.vaultcore.azure.net', format('{0}-vaultlink', variables('appName')))]",
+              "location": "global",
+              "properties": {
+                "virtualNetwork": {
+                  "id": "[resourceId('Microsoft.Network/virtualNetworks', format('{0}Vnet', variables('appName')))]"
+                },
+                "registrationEnabled": false
+              },
+              "dependsOn": [
+                "privateDnsZoneKeyVault",
+                "virtualNetwork"
+              ]
+            },
+            "vaultPrivateEndpoint::privateDnsZoneGroup": {
+              "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+              "apiVersion": "2024-01-01",
+              "name": "[format('{0}/{1}', format('{0}-vault-privateEndpoint', variables('appName')), 'default')]",
+              "properties": {
+                "privateDnsZoneConfigs": [
+                  {
+                    "name": "vault-config",
+                    "properties": {
+                      "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.vaultcore.azure.net')]"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "privateDnsZoneKeyVault",
+                "vaultPrivateEndpoint"
+              ]
+            },
+            "privateDnsZoneDB::privateDnsZoneLinkDB": {
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2020-06-01",
+              "name": "[format('{0}/{1}', 'privatelink.mysql.database.azure.com', format('{0}-dblink', variables('appName')))]",
+              "location": "global",
+              "properties": {
+                "virtualNetwork": {
+                  "id": "[resourceId('Microsoft.Network/virtualNetworks', format('{0}Vnet', variables('appName')))]"
+                },
+                "registrationEnabled": false
+              },
+              "dependsOn": [
+                "privateDnsZoneDB",
+                "virtualNetwork"
+              ]
+            },
+            "cachePrivateEndpoint::privateDnsZoneGroup": {
+              "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+              "apiVersion": "2023-04-01",
+              "name": "[format('{0}/{1}', format('{0}-cache-privateEndpoint', variables('appName')), 'default')]",
+              "properties": {
+                "privateDnsZoneConfigs": [
+                  {
+                    "name": "cache-config",
+                    "properties": {
+                      "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.redis.cache.windows.net')]"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "cachePrivateEndpoint",
+                "privateDnsZoneCache"
+              ]
+            },
+            "privateDnsZoneCache::privateDnsZoneLinkCache": {
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2020-06-01",
+              "name": "[format('{0}/{1}', 'privatelink.redis.cache.windows.net', format('{0}-cachelink', variables('appName')))]",
+              "location": "global",
+              "properties": {
+                "virtualNetwork": {
+                  "id": "[resourceId('Microsoft.Network/virtualNetworks', format('{0}Vnet', variables('appName')))]"
+                },
+                "registrationEnabled": false
+              },
+              "dependsOn": [
+                "privateDnsZoneCache",
+                "virtualNetwork"
+              ]
+            },
+            "keyVault::secret": {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2022-07-01",
+              "name": "[format('{0}/{1}', format('{0}-vault', take(replace(variables('appName'), '-', ''), 17)), 'appKey')]",
+              "properties": {
+                "value": "[parameters('appKey')]"
+              },
+              "dependsOn": [
+                "keyVault"
+              ]
+            },
+            "dbserver::db": {
+              "type": "Microsoft.DBforMySQL/flexibleServers/databases",
+              "apiVersion": "2023-06-30",
+              "name": "[format('{0}/{1}', format('{0}-mysql-server', variables('appName')), format('{0}-mysql-database', variables('appName')))]",
+              "dependsOn": [
+                "dbserver"
+              ]
+            },
+            "web::ftp": {
+              "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+              "apiVersion": "2023-12-01",
+              "name": "[format('{0}/{1}', variables('appName'), 'ftp')]",
+              "properties": {
+                "allow": false
+              },
+              "dependsOn": [
+                "web"
+              ]
+            },
+            "web::scm": {
+              "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+              "apiVersion": "2023-12-01",
+              "name": "[format('{0}/{1}', variables('appName'), 'scm')]",
+              "properties": {
+                "allow": false
+              },
+              "dependsOn": [
+                "web"
+              ]
+            },
+            "web::logs": {
+              "type": "Microsoft.Web/sites/config",
+              "apiVersion": "2022-09-01",
+              "name": "[format('{0}/{1}', variables('appName'), 'logs')]",
+              "properties": {
+                "applicationLogs": {
+                  "fileSystem": {
+                    "level": "Information"
+                  }
+                },
+                "detailedErrorMessages": {
+                  "enabled": true
+                },
+                "failedRequestsTracing": {
+                  "enabled": true
+                },
+                "httpLogs": {
+                  "fileSystem": {
+                    "enabled": true,
+                    "retentionInDays": 1,
+                    "retentionInMb": 35
+                  }
+                }
+              },
+              "dependsOn": [
+                "web"
+              ]
+            },
+            "web::webappVnetConfig": {
+              "type": "Microsoft.Web/sites/networkConfig",
+              "apiVersion": "2022-09-01",
+              "name": "[format('{0}/{1}', variables('appName'), 'virtualNetwork')]",
+              "properties": {
+                "subnetResourceId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', format('{0}Vnet', variables('appName')), 'webapp-subnet')]"
+              },
+              "dependsOn": [
+                "virtualNetwork",
+                "web"
+              ]
+            },
+            "virtualNetwork": {
+              "type": "Microsoft.Network/virtualNetworks",
+              "apiVersion": "2024-01-01",
+              "name": "[format('{0}Vnet', variables('appName'))]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "addressSpace": {
+                  "addressPrefixes": [
+                    "10.0.0.0/16"
+                  ]
+                },
+                "subnets": [
+                  {
+                    "name": "cache-subnet",
+                    "properties": {
+                      "addressPrefix": "10.0.0.0/24",
+                      "privateEndpointNetworkPolicies": "Disabled"
+                    }
+                  },
+                  {
+                    "name": "webapp-subnet",
+                    "properties": {
+                      "addressPrefix": "10.0.1.0/24",
+                      "delegations": [
+                        {
+                          "name": "dlg-appServices",
+                          "properties": {
+                            "serviceName": "Microsoft.Web/serverfarms"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "name": "database-subnet",
+                    "properties": {
+                      "addressPrefix": "10.0.2.0/24",
+                      "delegations": [
+                        {
+                          "name": "dlg-database",
+                          "properties": {
+                            "serviceName": "Microsoft.DBforMySQL/flexibleServers"
+                          }
+                        }
+                      ],
+                      "privateEndpointNetworkPolicies": "Disabled"
+                    }
+                  },
+                  {
+                    "name": "vault-subnet",
+                    "properties": {
+                      "addressPrefix": "10.0.3.0/24",
+                      "privateEndpointNetworkPolicies": "Disabled"
+                    }
+                  }
+                ]
+              }
+            },
+            "privateDnsZoneKeyVault": {
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2020-06-01",
+              "name": "privatelink.vaultcore.azure.net",
+              "location": "global"
+            },
+            "vaultPrivateEndpoint": {
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2023-04-01",
+              "name": "[format('{0}-vault-privateEndpoint', variables('appName'))]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "subnet": {
+                  "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', format('{0}Vnet', variables('appName')), 'vault-subnet')]"
+                },
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "[format('{0}-vault-privateEndpoint', variables('appName'))]",
+                    "properties": {
+                      "privateLinkServiceId": "[resourceId('Microsoft.KeyVault/vaults', format('{0}-vault', take(replace(variables('appName'), '-', ''), 17)))]",
+                      "groupIds": [
+                        "vault"
+                      ]
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "keyVault",
+                "virtualNetwork"
+              ]
+            },
+            "privateDnsZoneDB": {
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2020-06-01",
+              "name": "privatelink.mysql.database.azure.com",
+              "location": "global",
+              "dependsOn": [
+                "virtualNetwork"
+              ]
+            },
+            "cachePrivateEndpoint": {
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2023-04-01",
+              "name": "[format('{0}-cache-privateEndpoint', variables('appName'))]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "subnet": {
+                  "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', format('{0}Vnet', variables('appName')), 'cache-subnet')]"
+                },
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "[format('{0}-cache-privateEndpoint', variables('appName'))]",
+                    "properties": {
+                      "privateLinkServiceId": "[resourceId('Microsoft.Cache/redis', format('{0}-cache', variables('appName')))]",
+                      "groupIds": [
+                        "redisCache"
+                      ]
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "redisCache",
+                "virtualNetwork"
+              ]
+            },
+            "privateDnsZoneCache": {
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2020-06-01",
+              "name": "privatelink.redis.cache.windows.net",
+              "location": "global",
+              "dependsOn": [
+                "virtualNetwork"
+              ]
+            },
+            "keyVault": {
+              "type": "Microsoft.KeyVault/vaults",
+              "apiVersion": "2022-07-01",
+              "name": "[format('{0}-vault', take(replace(variables('appName'), '-', ''), 17))]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "enableRbacAuthorization": true,
+                "tenantId": "[subscription().tenantId]",
+                "sku": {
+                  "family": "A",
+                  "name": "standard"
+                },
+                "publicNetworkAccess": "Disabled",
+                "networkAcls": {
+                  "defaultAction": "Deny",
+                  "bypass": "none"
+                }
+              }
+            },
+            "keyVaultSecretUserRoleRoleDefinition": {
+              "existing": true,
+              "type": "Microsoft.Authorization/roleDefinitions",
+              "apiVersion": "2018-01-01-preview",
+              "subscriptionId": "[subscription().subscriptionId]",
+              "name": "4633458b-17de-408a-b874-0445c86b69e6"
+            },
+            "keyVaultSecretUserRoleAssignment": {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2020-08-01-preview",
+              "scope": "[format('Microsoft.KeyVault/vaults/{0}', format('{0}-vault', take(replace(variables('appName'), '-', ''), 17)))]",
+              "name": "[guid(resourceGroup().id, parameters('principalId'), subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')]",
+                "principalId": "[parameters('principalId')]",
+                "principalType": "User"
+              },
+              "dependsOn": [
+                "keyVault"
+              ]
+            },
+            "dbserver": {
+              "type": "Microsoft.DBforMySQL/flexibleServers",
+              "apiVersion": "2024-06-01-preview",
+              "name": "[format('{0}-mysql-server', variables('appName'))]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "version": "8.0.21",
+                "administratorLogin": "azureadmin",
+                "administratorLoginPassword": "[parameters('databasePassword')]",
+                "storage": {
+                  "autoGrow": "Enabled",
+                  "iops": 700,
+                  "storageSizeGB": 20
+                },
+                "backup": {
+                  "backupRetentionDays": 7,
+                  "geoRedundantBackup": "Disabled"
+                },
+                "network": {
+                  "privateDnsZoneResourceId": "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.mysql.database.azure.com')]",
+                  "delegatedSubnetResourceId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', format('{0}Vnet', variables('appName')), 'database-subnet')]",
+                  "publicNetworkAccess": "Disabled"
+                }
+              },
+              "sku": {
+                "name": "Standard_B1ms",
+                "tier": "Burstable"
+              },
+              "dependsOn": [
+                "privateDnsZoneDB",
+                "privateDnsZoneDB::privateDnsZoneLinkDB",
+                "virtualNetwork"
+              ]
+            },
+            "redisCache": {
+              "type": "Microsoft.Cache/redis",
+              "apiVersion": "2023-08-01",
+              "name": "[format('{0}-cache', variables('appName'))]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "sku": {
+                  "name": "Basic",
+                  "family": "C",
+                  "capacity": 0
+                },
+                "redisConfiguration": {},
+                "enableNonSslPort": false,
+                "redisVersion": "6",
+                "publicNetworkAccess": "Disabled"
+              }
+            },
+            "appServicePlan": {
+              "type": "Microsoft.Web/serverfarms",
+              "apiVersion": "2022-09-01",
+              "name": "[format('{0}-plan', variables('appName'))]",
+              "location": "[parameters('location')]",
+              "kind": "linux",
+              "properties": {
+                "reserved": true
+              },
+              "sku": {
+                "name": "P0V3"
+              }
+            },
+            "web": {
+              "type": "Microsoft.Web/sites",
+              "apiVersion": "2022-09-01",
+              "name": "[variables('appName')]",
+              "location": "[parameters('location')]",
+              "tags": {
+                "azd-service-name": "web"
+              },
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "siteConfig": {
+                  "linuxFxVersion": "PHP|8.3",
+                  "vnetRouteAllEnabled": true,
+                  "ftpsState": "Disabled"
+                },
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', format('{0}-plan', variables('appName')))]",
+                "httpsOnly": true
+              },
+              "dependsOn": [
+                "appServicePlan",
+                "virtualNetwork"
+              ]
+            },
+            "dbConnector": {
+              "type": "Microsoft.ServiceLinker/linkers",
+              "apiVersion": "2024-04-01",
+              "scope": "[format('Microsoft.Web/sites/{0}', variables('appName'))]",
+              "name": "defaultConnector",
+              "properties": {
+                "targetService": {
+                  "type": "AzureResource",
+                  "id": "[resourceId('Microsoft.DBforMySQL/flexibleServers/databases', format('{0}-mysql-server', variables('appName')), format('{0}-mysql-database', variables('appName')))]"
+                },
+                "authInfo": {
+                  "authType": "secret",
+                  "name": "azureadmin",
+                  "secretInfo": {
+                    "secretType": "rawValue",
+                    "value": "[parameters('databasePassword')]"
+                  }
+                },
+                "secretStore": {
+                  "keyVaultId": "[resourceId('Microsoft.KeyVault/vaults', format('{0}-vault', take(replace(variables('appName'), '-', ''), 17)))]",
+                  "keyVaultSecretName": "databasePassword"
+                },
+                "clientType": "php"
+              },
+              "dependsOn": [
+                "dbserver::db",
+                "keyVault",
+                "web"
+              ]
+            },
+            "vaultConnector": {
+              "type": "Microsoft.ServiceLinker/linkers",
+              "apiVersion": "2024-04-01",
+              "scope": "[format('Microsoft.Web/sites/{0}', variables('appName'))]",
+              "name": "vaultConnector",
+              "properties": {
+                "clientType": "none",
+                "targetService": {
+                  "type": "AzureResource",
+                  "id": "[resourceId('Microsoft.KeyVault/vaults', format('{0}-vault', take(replace(variables('appName'), '-', ''), 17)))]"
+                },
+                "authInfo": {
+                  "authType": "systemAssignedIdentity"
+                },
+                "vNetSolution": {
+                  "type": "privateLink"
+                }
+              },
+              "dependsOn": [
+                "keyVault",
+                "vaultPrivateEndpoint",
+                "web"
+              ]
+            },
+            "cacheConnector": {
+              "type": "Microsoft.ServiceLinker/linkers",
+              "apiVersion": "2024-04-01",
+              "scope": "[format('Microsoft.Web/sites/{0}', variables('appName'))]",
+              "name": "RedisConnector",
+              "properties": {
+                "clientType": "none",
+                "targetService": {
+                  "type": "AzureResource",
+                  "id": "[resourceId('Microsoft.Cache/Redis/Databases', format('{0}-cache', variables('appName')), '0')]"
+                },
+                "authInfo": {
+                  "authType": "accessKey"
+                },
+                "secretStore": {
+                  "keyVaultId": "[resourceId('Microsoft.KeyVault/vaults', format('{0}-vault', take(replace(variables('appName'), '-', ''), 17)))]"
+                },
+                "vNetSolution": {
+                  "type": "privateLink"
+                }
+              },
+              "dependsOn": [
+                "cachePrivateEndpoint",
+                "keyVault",
+                "redisCache",
+                "web"
+              ]
+            },
+            "logAnalyticsWorkspace": {
+              "type": "Microsoft.OperationalInsights/workspaces",
+              "apiVersion": "2023-09-01",
+              "name": "[format('{0}-workspace', variables('appName'))]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "retentionInDays": 30,
+                "features": {
+                  "searchVersion": 1
+                },
+                "sku": {
+                  "name": "PerGB2018"
+                }
+              }
+            },
+            "webdiagnostics": {
+              "type": "Microsoft.Insights/diagnosticSettings",
+              "apiVersion": "2021-05-01-preview",
+              "scope": "[format('Microsoft.Web/sites/{0}', variables('appName'))]",
+              "name": "AllLogs",
+              "properties": {
+                "workspaceId": "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-workspace', variables('appName')))]",
+                "logs": [
+                  {
+                    "category": "AppServiceHTTPLogs",
+                    "enabled": true
+                  },
+                  {
+                    "category": "AppServiceConsoleLogs",
+                    "enabled": true
+                  },
+                  {
+                    "category": "AppServiceAppLogs",
+                    "enabled": true
+                  },
+                  {
+                    "category": "AppServiceAuditLogs",
+                    "enabled": true
+                  },
+                  {
+                    "category": "AppServiceIPSecAuditLogs",
+                    "enabled": true
+                  },
+                  {
+                    "category": "AppServicePlatformLogs",
+                    "enabled": true
+                  }
+                ],
+                "metrics": [
+                  {
+                    "category": "AllMetrics",
+                    "enabled": true
+                  }
+                ]
+              },
+              "dependsOn": [
+                "logAnalyticsWorkspace",
+                "web"
+              ]
+            },
+            "appsettings": {
+              "type": "Microsoft.Web/sites/config",
+              "apiVersion": "2024-04-01",
+              "name": "[format('{0}/{1}', variables('appName'), 'appsettings')]",
+              "properties": "[union(reduce(listConfigurations('vaultConnector', '2024-04-01').configurations, createObject(), lambda('cur', 'next', union(lambdaVariables('cur'), createObject(format('{0}', lambdaVariables('next').name), __bicep.checkAndFormatSecrets(lambdaVariables('next')))))), reduce(listConfigurations('dbConnector', '2024-04-01').configurations, createObject(), lambda('cur', 'next', union(lambdaVariables('cur'), createObject(format('{0}', lambdaVariables('next').name), __bicep.checkAndFormatSecrets(lambdaVariables('next')))))), reduce(listConfigurations('cacheConnector', '2024-04-01').configurations, createObject(), lambda('cur', 'next', union(lambdaVariables('cur'), createObject(format('{0}', lambdaVariables('next').name), __bicep.checkAndFormatSecrets(lambdaVariables('next')))))), createObject())]",
+              "dependsOn": [
+                "cacheConnector",
+                "dbConnector",
+                "vaultConnector",
+                "web"
+              ]
+            }
+          },
+          "outputs": {
+            "WEB_URI": {
+              "type": "string",
+              "value": "[format('https://{0}', reference('web').defaultHostName)]"
+            },
+            "APP_SETTINGS": {
+              "type": "array",
+              "value": "[objectKeys(union(reduce(listConfigurations('vaultConnector', '2024-04-01').configurations, createObject(), lambda('cur', 'next', union(lambdaVariables('cur'), createObject(format('{0}', lambdaVariables('next').name), __bicep.checkAndFormatSecrets(lambdaVariables('next')))))), reduce(listConfigurations('dbConnector', '2024-04-01').configurations, createObject(), lambda('cur', 'next', union(lambdaVariables('cur'), createObject(format('{0}', lambdaVariables('next').name), __bicep.checkAndFormatSecrets(lambdaVariables('next')))))), reduce(listConfigurations('cacheConnector', '2024-04-01').configurations, createObject(), lambda('cur', 'next', union(lambdaVariables('cur'), createObject(format('{0}', lambdaVariables('next').name), __bicep.checkAndFormatSecrets(lambdaVariables('next')))))), createObject()))]"
+            },
+            "WEB_APP_LOG_STREAM": {
+              "type": "string",
+              "value": "[format('https://portal.azure.com/#@/resource{0}/logStream', resourceId('Microsoft.Web/sites', variables('appName')))]"
+            },
+            "WEB_APP_SSH": {
+              "type": "string",
+              "value": "[format('https://{0}.scm.azurewebsites.net/webssh/host', variables('appName'))]"
+            },
+            "WEB_APP_CONFIG": {
+              "type": "string",
+              "value": "[format('https://portal.azure.com/#@/resource{0}/environmentVariablesAppSettings', resourceId('Microsoft.Web/sites', variables('appName')))]"
+            },
+            "AZURE_KEY_VAULT_NAME": {
+              "type": "string",
+              "value": "[format('{0}-vault', take(replace(variables('appName'), '-', ''), 17))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('{0}_group', parameters('name')))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "AZURE_LOCATION": {
+      "type": "string",
+      "value": "[parameters('location')]"
+    },
+    "WEB_URI": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('{0}_group', parameters('name'))), 'Microsoft.Resources/deployments', 'resources'), '2022-09-01').outputs.WEB_URI.value]"
+    },
+    "APP_SETTINGS": {
+      "type": "array",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('{0}_group', parameters('name'))), 'Microsoft.Resources/deployments', 'resources'), '2022-09-01').outputs.APP_SETTINGS.value]"
+    },
+    "WEB_APP_LOG_STREAM": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('{0}_group', parameters('name'))), 'Microsoft.Resources/deployments', 'resources'), '2022-09-01').outputs.WEB_APP_LOG_STREAM.value]"
+    },
+    "WEB_APP_SSH": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('{0}_group', parameters('name'))), 'Microsoft.Resources/deployments', 'resources'), '2022-09-01').outputs.WEB_APP_SSH.value]"
+    },
+    "WEB_APP_CONFIG": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('{0}_group', parameters('name'))), 'Microsoft.Resources/deployments', 'resources'), '2022-09-01').outputs.WEB_APP_CONFIG.value]"
+    },
+    "AZURE_KEY_VAULT_NAME": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('{0}_group', parameters('name'))), 'Microsoft.Resources/deployments', 'resources'), '2022-09-01').outputs.AZURE_KEY_VAULT_NAME.value]"
+    }
+  }
+}
